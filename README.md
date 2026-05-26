@@ -13,7 +13,6 @@ An SSH deployment orchestrator that uploads local assets and runs shell scripts 
 │ COMPLETED SUCCESSFULLY                                                       │
 └──────────────────────────────────────────────────────────────────────────────┘
  Switch: [TAB] | Scroll: [SHIFT]+[↑/↓] [PGUP/PGDN] | Quit: [CTRL+C] | ...
-
 ```
 
 ## Why s.Orchestrator?
