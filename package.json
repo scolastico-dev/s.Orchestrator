@@ -1,0 +1,52 @@
+{
+  "name": "@scolastico-dev/orchestrator",
+  "version": "1.0.0",
+  "description": "SSH deployment orchestrator with a blessed TUI - upload assets, run scripts across servers in parallel",
+  "source": "src/index.ts",
+  "main": "dist/index.js",
+  "bin": {
+    "s-orchestrator": "dist/index.js"
+  },
+  "targets": {
+    "main": {
+      "outputFormat": "commonjs",
+      "context": "node",
+      "includeNodeModules": false
+    }
+  },
+  "scripts": {
+    "build": "parcel build",
+    "dev": "ts-node src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "blessed": "^0.1.81",
+    "commander": "^12.0.0",
+    "zod": "^3.22.0",
+    "zod-to-json-schema": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/blessed": "^0.1.25",
+    "@types/dockerode": "^3.3.0",
+    "@types/node": "^20.0.0",
+    "dockerode": "^4.0.0",
+    "parcel": "^2.16.4",
+    "ts-node": "^10.9.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@parcel/watcher",
+      "@swc/core",
+      "cpu-features",
+      "lmdb",
+      "msgpackr-extract",
+      "protobufjs",
+      "ssh2"
+    ]
+  }
+}

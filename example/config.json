@@ -1,0 +1,16 @@
+{
+  "web": {
+    "ip": "192.168.1.10",
+    "user": "root",
+    "env": {
+      "DEPLOY_USER": "deploy"
+    }
+  },
+  "db": {
+    "ip": "192.168.1.20",
+    "user": "root",
+    "env": {
+      "DEPLOY_USER": "deploy"
+    }
+  }
+}
