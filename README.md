@@ -56,7 +56,6 @@ For environments where Node.js is unavailable, a self-contained bash implementat
 ```bash
 # Run directly (no build or Node.js required)
 curl -sSL https://raw.githubusercontent.com/scolastico-dev/orchestrator/main/lite-version.sh | bash -s -- [options]
-
 ```
 
 The lite version supports all the same options as the full version except `--ugly` and `--schema`:
@@ -70,7 +69,6 @@ Options:
   --assets-dir <path>       local assets directory to upload    (default: assets)
   --scripts-dir <path>      local scripts directory             (default: scripts)
   --remote-path <path>      remote working directory            (default: /tmp/s-orchestrator)
-
 ```
 
 | Feature                      | Full version | Lite version    |
@@ -135,7 +133,6 @@ pnpm build
 
 # Then run it
 node dist/index.js [options]
-
 ```
 
 ## Quick Start
@@ -157,7 +154,6 @@ node dist/index.js [options]
     "keyFile": "~/.ssh/db_deploy"
   }
 }
-
 ```
 
 **2. Add your scripts**
@@ -201,7 +197,6 @@ The config file is a JSON object whose **keys are server names** and whose **val
 ```bash
 s-orchestrator --schema                      # print schema to stdout
 s-orchestrator --schema config.schema.json   # write to file
-
 ```
 
 Add to `config.json` for editor validation:
