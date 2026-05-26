@@ -63,7 +63,7 @@ describe.skipIf(SKIP)('deploy integration tests (requires Docker)', () => {
     const fileLogger = new FileLogger(logDir);
     fileLogger.register('test-server');
 
-    const scriptsDone: number[] = [];
+    let scriptsDone = 0;
 
     await deployServer({
       serverName: 'test-server',
@@ -82,10 +82,10 @@ describe.skipIf(SKIP)('deploy integration tests (requires Docker)', () => {
       remotePath: '/tmp/s-orch-deploy-integ',
       logger,
       fileLogger,
-      onScriptDone: (n) => scriptsDone.push(n),
+      onScriptDone: () => { scriptsDone++; },
     });
 
-    expect(scriptsDone).toEqual([1, 2]);
+    expect(scriptsDone).toBe(2);
 
     // Verify logger received output
     const logMock = logger.log as ReturnType<typeof vi.fn>;

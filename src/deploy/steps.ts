@@ -79,10 +79,11 @@ export async function deployServer(opts: DeployServerOptions): Promise<void> {
   for (const script of scripts) {
     logger.log(`{cyan-fg}Running: ${script}{/cyan-fg}`);
 
+    const scriptSubdir = basename(scriptsDir);
     const cmd = [
       `cd ${remotePath}`,
-      `chmod +x ./scripts/${script}`,
-      `${envString} ./scripts/${script}`,
+      `chmod +x ./${scriptSubdir}/${script}`,
+      `${envString} ./${scriptSubdir}/${script}`,
     ].join(' && ');
 
     await execRemoteStreaming(target, cmd, {
