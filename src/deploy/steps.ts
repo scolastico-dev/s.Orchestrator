@@ -16,7 +16,7 @@ export interface DeployServerOptions {
   remotePath: string;
   logger: ServerLogger;
   fileLogger: FileLogger;
-  onScriptDone: (scriptsDone: number) => void;
+  onScriptDone: () => void;
 }
 
 function buildTarget(config: ServerConfig): SshTarget {
@@ -92,7 +92,7 @@ export async function deployServer(opts: DeployServerOptions): Promise<void> {
     });
 
     scriptsDone++;
-    onScriptDone(scriptsDone);
+    onScriptDone();
   }
 
   logger.log('{cyan-fg}Cleaning up remote directory...{/cyan-fg}');

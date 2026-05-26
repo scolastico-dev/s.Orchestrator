@@ -70,6 +70,7 @@ export async function runDeployment(
   // --- Deploy in parallel ---
   let totalExecuted = 0;
   let serversDone = 0;
+  const deployFailed = new Set<string>();
 
   await Promise.all(
     servers.map(async ([name, data]) => {
@@ -120,12 +121,12 @@ export async function runDeployment(
           remotePath: options.remotePath,
           logger,
           fileLogger,
-          onScriptDone: (done) => {
-            scriptsDone = done;
+          onScriptDone: () => {
+            scriptsDone++;
             totalExecuted++;
             ui.updateStatus({
               serverName: name,
-              scriptsDone: done,
+              scriptsDone,
               totalScripts: scripts.length,
               totalExecuted,
               totalToExecute: totalExecutions,
@@ -141,6 +142,7 @@ export async function runDeployment(
         logger.log(`{red-fg}ERROR: ${(err as Error).message}{/red-fg}`);
         totalExecuted += scripts.length - scriptsDone;
         serversDone++;
+        deployFailed.add(name);
         ui.markServerDone(name, false);
       }
 
@@ -157,6 +159,6 @@ export async function runDeployment(
   );
 
   // --- Final status ---
-  const anyFailed = servers.some(([name]) => !connectionOk.get(name));
+  const anyFailed = servers.some(([name]) => !connectionOk.get(name) || deployFailed.has(name));
   await ui.showFinalStatus(anyFailed);
 }
