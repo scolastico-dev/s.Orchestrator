@@ -140,7 +140,7 @@ node dist/index.js [options]
 
 ## Quick Start
 
-**1. Create `config.json**`
+**1. Create `config.json`**
 
 ```json
 {
@@ -176,12 +176,11 @@ scripts/
 
 ```bash
 s-orchestrator
-
 ```
 
 On first run, s.Orchestrator will fetch all SSH host key types for each server and ask you to confirm before saving them to `config.json`. Subsequent runs verify every stored key type and abort if any of them changes (TOFU - Trust On First Use).
 
-See [`examples/basic-server-setup/`](https://www.google.com/search?q=examples/basic-server-setup/) for a complete working example that provisions two Debian servers: apt upgrade, SSH key setup, and Docker installation.
+See [`example/`](https://github.com/scolastico-dev/s.Orchestrator/tree/main/example) for a complete working example that provisions two Debian servers: apt upgrade, SSH key setup, and Docker installation.
 
 ## Configuration Reference
 
@@ -212,7 +211,6 @@ Add to `config.json` for editor validation:
   "$schema": "./config.schema.json",
   "web": { "ip": "..." }
 }
-
 ```
 
 ## Injected Environment Variables
@@ -247,7 +245,6 @@ Options:
   --scripts-dir <path>      local scripts directory             (default: "scripts")
   --remote-path <path>      remote working directory            (default: "/tmp/s-orchestrator")
   -h, --help                display help
-
 ```
 
 ### Examples
@@ -267,7 +264,6 @@ s-orchestrator --ugly -y -c /etc/deploy/config.json
 
 # Export the JSON schema
 s-orchestrator --schema > config.schema.json
-
 ```
 
 ## Deployment Flow
@@ -298,7 +294,6 @@ your-project/
 └── scripts/             # executed in alphabetical order on each server
     ├── 01-update.sh
     └── 02-restart.sh
-
 ```
 
 ## Development
@@ -318,7 +313,6 @@ pnpm build
 
 # Run from source (no build needed)
 pnpm dev -- --help
-
 ```
 
 ### Project Structure
@@ -342,7 +336,6 @@ src/
     ├── types.ts      OrchestratorUI interface
     ├── tui.ts        blessed TUI implementation
     └── plain.ts      plain stdout implementation
-
 tests/
 ├── fixtures/sshd/        Alpine+OpenSSH Docker image for integration tests
 ├── helpers/docker.ts     Docker container lifecycle management
@@ -350,7 +343,6 @@ tests/
 ├── ssh.test.ts           SSH executor integration tests (requires Docker)
 ├── deploy.test.ts        deployment integration tests (requires Docker)
 └── lite-version.test.ts  lite-version.sh integration tests (requires Docker)
-
 ```
 
 ## Testing
@@ -361,7 +353,6 @@ pnpm test
 
 # Unit tests only (no Docker required)
 pnpm test tests/config.test.ts
-
 ```
 
 **Integration tests** spin up Alpine+OpenSSH Docker containers automatically, run the deployment against them, and clean up on completion. They are skipped gracefully when Docker is unavailable.
@@ -374,5 +365,22 @@ pnpm test tests/config.test.ts
 * Scripts run with **the permissions of the configured SSH user** - use a least-privilege deploy user where possible
 
 ## License
+This project is licensed under the **MIT License**.
 
-MIT © scolastico-dev
+### About
+MIT
+
+A short and simple permissive license with conditions only requiring preservation of copyright and license notices. Licensed works, modifications, and larger works may be distributed under different terms and without source code.
+
+### What you can do
+
+| Permissions                                                                                                                       | Conditions                                                                                                                                                   | Limitations                                                                                                            |
+|-----------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------|
+| <details><summary>🟢 Commercial use</summary>The licensed material and derivatives may be used for commercial purposes.</details> | <details><summary>🔵 License and copyright notice</summary>A copy of the license and copyright notice must be included with the licensed material.</details> | <details><summary>🔴 Liability</summary>This license includes a limitation of liability.</details>                     |
+| <details><summary>🟢 Distribution</summary>The licensed material may be distributed.</details>                                    |                                                                                                                                                              | <details><summary>🔴 Warranty</summary>This license explicitly states that it does NOT provide any warranty.</details> |
+| <details><summary>🟢 Modification</summary>The licensed material may be modified.</details>                                       |                                                                                                                                                              |                                                                                                                        |
+| <details><summary>🟢 Private use</summary>The licensed material may be used and modified in private.</details>                    |                                                                                                                                                              |                                                                                                                        |
+
+*Information provided by https://choosealicense.com/licenses/mit/*
+
+**This information is provided for general understanding and is not legal advice.**
