@@ -43,6 +43,7 @@
       "@parcel/watcher",
       "@swc/core",
       "cpu-features",
+      "esbuild",
       "lmdb",
       "msgpackr-extract",
       "protobufjs",
