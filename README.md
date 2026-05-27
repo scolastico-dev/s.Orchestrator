@@ -49,7 +49,7 @@ When you need to provision a machine, deploy an app, or apply quick updates acro
 
 ## Lite Version
 
-For environments where Node.js is unavailable, a self-contained bash implementation is provided in [`lite-version.sh`](https://www.google.com/search?q=lite-version.sh). It shares the same config format and feature set but deploys servers **sequentially** and has no TUI.
+For environments where Node.js is unavailable, a self-contained bash implementation is provided in [`lite-version.sh`](./lite-version.sh). It shares the same config format and feature set but deploys servers **sequentially** and has no TUI.
 
 **Requirements:** `bash`, `ssh`, `scp`, `ssh-keyscan`, `ssh-keygen`, `jq`
 
