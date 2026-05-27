@@ -1,6 +1,6 @@
 {
   "name": "@scolastico-dev/orchestrator",
-  "version": "1.0.0",
+  "version": "0.0.0",
   "description": "SSH deployment orchestrator with a blessed TUI - upload assets, run scripts across servers in parallel",
   "source": "src/index.ts",
   "main": "dist/index.js",
