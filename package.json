@@ -7,7 +7,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/scolastico-dev/orchestrator"
+    "url": "https://github.com/scolastico-dev/s.Orchestrator.git"
   },
   "files": [
     "dist",
