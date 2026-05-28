@@ -126,6 +126,85 @@ describe.skipIf(SKIP)('deploy integration tests (requires Docker)', () => {
       })
     ).rejects.toThrow();
   });
+
+  it('deployServer runs --exec command instead of scripts', async () => {
+    const scriptsDir = join(workDir, 'exec-scripts');
+    const logDir = join(workDir, 'exec-logs');
+    mkdirSync(scriptsDir, { recursive: true });
+    mkdirSync(logDir, { recursive: true });
+
+    // This script would print a sentinel if executed — it must NOT appear in output
+    writeFileSync(join(scriptsDir, '01-should-not-run.sh'), '#!/bin/sh\necho "script-was-executed"\n', { mode: 0o755 });
+
+    const logger = makeSilentLogger();
+    const fileLogger = new FileLogger(logDir);
+    fileLogger.register('exec-server');
+
+    const onScriptDone = vi.fn();
+
+    await deployServer({
+      serverName: 'exec-server',
+      config: {
+        ip: container.host,
+        port: container.port,
+        user: container.user,
+        keyFile: container.privateKeyPath,
+        knownHostsFile: container.knownHostsPath,
+        hostKeys: await container.getHostKeys(),
+      },
+      scripts: ['01-should-not-run.sh'],
+      exec: 'echo exec-marker-ok',
+      assetsDir: join(workDir, 'assets-none-exec'),
+      scriptsDir,
+      remotePath: '/tmp/s-orch-deploy-exec',
+      logger,
+      fileLogger,
+      onScriptDone,
+    });
+
+    // onScriptDone called exactly once (one exec command, not one per script)
+    expect(onScriptDone).toHaveBeenCalledTimes(1);
+
+    const writeMock = logger.write as ReturnType<typeof vi.fn>;
+    const allOutput: string = writeMock.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(allOutput).toContain('exec-marker-ok');
+    expect(allOutput).not.toContain('script-was-executed');
+  });
+
+  it('deployServer --exec receives injected env vars', async () => {
+    const logDir = join(workDir, 'exec-env-logs');
+    mkdirSync(logDir, { recursive: true });
+
+    const logger = makeSilentLogger();
+    const fileLogger = new FileLogger(logDir);
+    fileLogger.register('exec-env-server');
+
+    await deployServer({
+      serverName: 'exec-env-server',
+      config: {
+        ip: container.host,
+        port: container.port,
+        user: container.user,
+        keyFile: container.privateKeyPath,
+        knownHostsFile: container.knownHostsPath,
+        hostKeys: await container.getHostKeys(),
+        env: { MY_CUSTOM: 'injected-value' },
+      },
+      scripts: [],
+      exec: 'echo "name=$SERVER_NAME custom=$MY_CUSTOM"',
+      assetsDir: join(workDir, 'assets-none-exec-env'),
+      scriptsDir: join(workDir, 'scripts-none-exec-env'),
+      remotePath: '/tmp/s-orch-deploy-exec-env',
+      logger,
+      fileLogger,
+      onScriptDone: vi.fn(),
+    });
+
+    const writeMock = logger.write as ReturnType<typeof vi.fn>;
+    const allOutput: string = writeMock.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(allOutput).toContain('name=exec-env-server');
+    expect(allOutput).toContain('custom=injected-value');
+  });
 });
 
 if (SKIP) {

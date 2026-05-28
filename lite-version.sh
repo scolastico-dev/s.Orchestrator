@@ -11,14 +11,18 @@ ORIGINAL_ARGS=("$@")
 SELF_UPDATE_URL="https://raw.githubusercontent.com/scolastico-dev/s.Orchestrator/main/lite-version.sh"
 
 self_update_check() {
+  # Skip if stdin is not a terminal (non-interactive run, CI, piped, tests).
+  # Using explicit `return 0` because `|| return` without an argument would
+  # propagate the non-zero exit of the failed test and trigger set -e.
+  [[ -t 0 ]] || return 0
   local self_path
   self_path="$(realpath "$0" 2>/dev/null || true)"
   # Skip if not a real file on disk (e.g. piped via curl | bash)
-  [[ -z "$self_path" || ! -f "$self_path" ]] && return
+  [[ -z "$self_path" || ! -f "$self_path" ]] && return 0
   # Skip if curl is unavailable
-  command -v curl &>/dev/null || return
+  command -v curl &>/dev/null || return 0
   # Skip if no md5 tool is available
-  command -v md5sum &>/dev/null || command -v md5 &>/dev/null || return
+  command -v md5sum &>/dev/null || command -v md5 &>/dev/null || return 0
 
   local latest
   latest="$(curl -sSfL "$SELF_UPDATE_URL" 2>/dev/null || true)"
@@ -405,10 +409,20 @@ deploy_server() {
       >> "$LOG_DIR/$name.log" 2>&1
   fi
 
+  # Build export string for exec mode — prefix approach fails because the shell
+  # expands $VAR before the prefix assignment takes effect; export sets them first.
+  local export_string=""
+  for pair in "${env_pairs[@]}"; do
+    local ek="${pair%%=*}"
+    local ev="${pair#*=}"
+    local escaped_ev="${ev//\'/\'\\\'\'}"
+    export_string+="export $ek='$escaped_ev'; "
+  done
+
   # Step 4: run command(s)
   if [[ -n "$EXEC_CMD" ]]; then
     log_server "$name" "Running: $EXEC_CMD"
-    local cmd="cd ${REMOTE_PATH} && ${env_string}${EXEC_CMD}"
+    local cmd="cd ${REMOTE_PATH} && ${export_string}${EXEC_CMD}"
     local ssh_rc=0
     ssh "${ssh_opts[@]}" -tt "${user}@${ip}" "$cmd" 2>&1 \
       | tee -a "$LOG_DIR/$name.log" \

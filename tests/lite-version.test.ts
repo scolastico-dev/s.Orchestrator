@@ -73,6 +73,19 @@ describe('lite-version.sh — CLI parsing', () => {
     ]);
     expect(r.stderr).not.toContain('Unknown option');
   });
+
+  it('accepts --exec without erroring on flag parsing', () => {
+    const r = runScript(['--exec', 'uptime', '--config', '/nonexistent.json']);
+    expect(r.stderr).not.toContain('Unknown option');
+    // Fails on missing config, not on the flag itself
+    expect(r.stderr).toContain('Config file not found');
+  });
+
+  it('accepts --servers without erroring on flag parsing', () => {
+    const r = runScript(['--servers', 'web,db', '--config', '/nonexistent.json']);
+    expect(r.stderr).not.toContain('Unknown option');
+    expect(r.stderr).toContain('Config file not found');
+  });
 });
 
 describe('lite-version.sh — config validation', () => {
@@ -126,6 +139,35 @@ describe('lite-version.sh — config validation', () => {
       expect(r.stderr).toContain('No servers found');
     } finally {
       tmp.cleanup();
+    }
+  });
+});
+
+describe('lite-version.sh — --servers validation (no Docker needed)', () => {
+  it('exits 1 with an error when a --servers name is not in the config', () => {
+    const { path, cleanup } = writeTempFile(
+      JSON.stringify({ real: { ip: '1.2.3.4', hostKeys: ['ssh-ed25519 AAAA'] } })
+    );
+    try {
+      const r = runScript(['-c', path, '--servers', 'real,ghost']);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('Unknown server');
+      expect(r.stderr).toContain('ghost');
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('exits 1 when all listed --servers names are unknown', () => {
+    const { path, cleanup } = writeTempFile(
+      JSON.stringify({ real: { ip: '1.2.3.4' } })
+    );
+    try {
+      const r = runScript(['-c', path, '--servers', 'nope,also-nope']);
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('Unknown server');
+    } finally {
+      cleanup();
     }
   });
 });
@@ -387,6 +429,110 @@ describe.skipIf(SKIP_DOCKER)('lite-version.sh — integration tests (requires Do
 
     expect(r.status).toBe(0);
     expect(r.stdout).toContain('no-prompt-ok');
+  });
+
+  it('--exec runs a single command instead of scripts', async () => {
+    const testDir = join(workDir, 'exec-cmd');
+    const scriptsDir = join(testDir, 'scripts');
+    mkdirSync(scriptsDir, { recursive: true });
+
+    // This sentinel must NOT appear — exec replaces script execution
+    writeFileSync(join(scriptsDir, '01-should-not-run.sh'), '#!/bin/sh\necho "script-ran"\n', { mode: 0o755 });
+
+    const configPath = join(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify(await buildConfig()));
+
+    const r = runScript(
+      ['-c', configPath, '-y', '--scripts-dir', scriptsDir, '--exec', 'echo exec-marker-ok'],
+      { cwd: testDir, env: { HOME: fakeHome } }
+    );
+
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('exec-marker-ok');
+    expect(r.stdout).not.toContain('script-ran');
+    expect(r.stdout).toContain('ALL DEPLOYMENTS COMPLETED SUCCESSFULLY');
+  });
+
+  it('--exec receives injected env vars on the remote', async () => {
+    const testDir = join(workDir, 'exec-env');
+    mkdirSync(testDir, { recursive: true });
+
+    const configPath = join(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify(await buildConfig({ env: { MY_EXEC_VAR: 'from-exec' } })));
+
+    const r = runScript(
+      ['-c', configPath, '-y', '--exec', 'echo "srv=$SERVER_NAME custom=$MY_EXEC_VAR"'],
+      { cwd: testDir, env: { HOME: fakeHome } }
+    );
+
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('srv=test-server');
+    expect(r.stdout).toContain('custom=from-exec');
+  });
+
+  it('--exec fails the deployment when the command exits non-zero', async () => {
+    const testDir = join(workDir, 'exec-fail');
+    mkdirSync(testDir, { recursive: true });
+
+    const configPath = join(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify(await buildConfig()));
+
+    const r = runScript(
+      ['-c', configPath, '-y', '--exec', 'exit 7'],
+      { cwd: testDir, env: { HOME: fakeHome } }
+    );
+
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain('COMPLETED WITH ERRORS');
+  });
+
+  it('--servers targets only listed servers and skips the rest', async () => {
+    const testDir = join(workDir, 'servers-filter');
+    const scriptsDir = join(testDir, 'scripts');
+    mkdirSync(scriptsDir, { recursive: true });
+
+    writeFileSync(join(scriptsDir, '01-mark.sh'), '#!/bin/sh\necho "reached-$SERVER_NAME"\n', { mode: 0o755 });
+
+    // Config has two servers: the real container and a fake unreachable one.
+    // Without --servers filtering the fake server would cause a connection failure.
+    const configPath = join(testDir, 'config.json');
+    const config = {
+      ...(await buildConfig()),
+      'unreachable-server': {
+        ip: '192.0.2.1',  // TEST-NET — guaranteed unreachable
+        port: 22,
+        user: 'root',
+        hostKeys: ['ssh-ed25519 AAAA'],
+      },
+    };
+    writeFileSync(configPath, JSON.stringify(config));
+
+    const r = runScript(
+      ['-c', configPath, '-y', '--scripts-dir', scriptsDir, '--servers', 'test-server'],
+      { cwd: testDir, env: { HOME: fakeHome } }
+    );
+
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('reached-test-server');
+    expect(r.stdout).not.toContain('unreachable-server');
+    expect(r.stdout).toContain('ALL DEPLOYMENTS COMPLETED SUCCESSFULLY');
+  });
+
+  it('--servers exits 1 when a listed server name is not in the config', async () => {
+    const testDir = join(workDir, 'servers-unknown');
+    mkdirSync(testDir, { recursive: true });
+
+    const configPath = join(testDir, 'config.json');
+    writeFileSync(configPath, JSON.stringify(await buildConfig()));
+
+    const r = runScript(
+      ['-c', configPath, '-y', '--servers', 'test-server,does-not-exist'],
+      { cwd: testDir, env: { HOME: fakeHome } }
+    );
+
+    expect(r.status).toBe(1);
+    expect(r.stderr).toContain('Unknown server');
+    expect(r.stderr).toContain('does-not-exist');
   });
 });
 

@@ -77,7 +77,13 @@ export async function deployServer(opts: DeployServerOptions): Promise<void> {
 
   if (exec) {
     logger.log(`{cyan-fg}Running: ${exec}{/cyan-fg}`);
-    const cmd = `cd ${remotePath} && ${envString} ${exec}`;
+    // Use export so vars are in the shell environment before the exec command
+    // runs — the prefix approach fails because the shell expands $VAR before
+    // the prefix assignment takes effect.
+    const envExportString = Object.entries(injectedEnv)
+      .map(([k, v]) => `export ${k}='${v.replace(/'/g, "'\\''")}'`)
+      .join('; ');
+    const cmd = `cd ${remotePath} && ${envExportString}; ${exec}`;
     await execRemoteStreaming(target, cmd, {
       ...cb,
       onChild: (child: ChildProcess) => logger.setActiveChild(child),
