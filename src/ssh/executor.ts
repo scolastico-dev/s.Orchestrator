@@ -2,6 +2,16 @@ import { exec, spawn } from 'child_process';
 import type { ChildProcess } from 'child_process';
 import type { ExecResult } from '../types';
 
+export class RemoteExitError extends Error {
+  constructor(
+    message: string,
+    public readonly exitCode: number | null
+  ) {
+    super(message);
+    this.name = 'RemoteExitError';
+  }
+}
+
 export interface StreamCallbacks {
   onStdout?: (data: string) => void;
   onStderr?: (data: string) => void;
@@ -22,6 +32,8 @@ function buildSshArgs(target: SshTarget, extra: string[]): string[] {
   const args: string[] = [
     '-o', 'StrictHostKeyChecking=yes',
     '-o', 'LogLevel=error',
+    '-o', 'ServerAliveInterval=30',
+    '-o', 'ServerAliveCountMax=6',
     '-p', target.port.toString(),
   ];
   if (target.knownHostsFile) {
@@ -71,7 +83,7 @@ export function execRemoteStreaming(
     child.on('close', (code) => {
       cb.onChildExit?.();
       if (code === 0) resolve();
-      else reject(new Error(`Remote command exited with code ${code ?? 'null'}`));
+      else reject(new RemoteExitError(`Remote command exited with code ${code ?? 'null'}`, code));
     });
 
     child.on('error', (err) => {
@@ -105,7 +117,7 @@ export function execRemoteSimple(
 
     child.on('close', (code) => {
       if (code === 0) resolve(out);
-      else reject(new Error(`Remote command exited with code ${code ?? 'null'}`));
+      else reject(new RemoteExitError(`Remote command exited with code ${code ?? 'null'}`, code));
     });
 
     child.on('error', reject);
@@ -122,6 +134,8 @@ export function scpUpload(
     const args: string[] = [
       '-o', 'StrictHostKeyChecking=yes',
       '-o', 'LogLevel=error',
+      '-o', 'ServerAliveInterval=30',
+      '-o', 'ServerAliveCountMax=6',
       '-P', target.port.toString(),
       '-r',
     ];
@@ -140,7 +154,7 @@ export function scpUpload(
 
     child.on('close', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`scp upload failed with exit code ${code ?? 'null'}`));
+      else reject(new RemoteExitError(`scp upload failed with exit code ${code ?? 'null'}`, code));
     });
 
     child.on('error', reject);

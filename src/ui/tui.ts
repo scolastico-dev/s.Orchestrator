@@ -13,6 +13,7 @@ interface PaneState {
   blinkState: boolean;
   lastActivity: number;
   activeChild: ChildProcess | null;
+  scriptsDone: number;
 }
 
 class TuiServerLogger implements ServerLogger {
@@ -144,6 +145,7 @@ export class TuiUI implements OrchestratorUI {
         blinkState: false,
         lastActivity: Date.now(),
         activeChild: null,
+        scriptsDone: 0,
       };
     });
 
@@ -196,6 +198,10 @@ export class TuiUI implements OrchestratorUI {
   };
 
   updateStatus(update: StatusUpdate): void {
+    const idx = this.serverNames.indexOf(update.serverName);
+    if (idx !== -1) {
+      this.panes[idx].scriptsDone = update.scriptsDone;
+    }
     this.lastStatus = update;
     this.render();
   }
@@ -298,7 +304,7 @@ export class TuiUI implements OrchestratorUI {
     const s = this.lastStatus;
     const pct = s.totalToExecute > 0 ? Math.floor((s.totalExecuted / s.totalToExecute) * 100) : 0;
     const currentPane = this.panes[this.focusIndex];
-    const currentScripts = currentPane ? s.scriptsDone : 0;
+    const currentScripts = currentPane ? currentPane.scriptsDone : 0;
 
     this.statusBar.setContent(
       ` Switch: [TAB] | Scroll: [SHIFT]+[↑/↓] [PGUP/PGDN] | Quit: [CTRL+C]` +

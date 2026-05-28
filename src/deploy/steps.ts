@@ -3,7 +3,7 @@ import { basename } from 'path';
 import type { ServerConfig } from '../config';
 import type { FileLogger } from '../logger';
 import type { ServerLogger } from '../ui/types';
-import { execRemoteSimple, execRemoteStreaming, scpUpload } from '../ssh/executor';
+import { execRemoteSimple, execRemoteStreaming, scpUpload, RemoteExitError } from '../ssh/executor';
 import type { SshTarget } from '../ssh/executor';
 import type { ChildProcess } from 'child_process';
 
@@ -30,6 +30,32 @@ function buildTarget(config: ServerConfig): SshTarget {
   };
 }
 
+const RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 5_000;
+
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  onRetry: (attempt: number, err: Error) => void
+): Promise<T> {
+  let lastErr!: Error;
+  for (let i = 0; i < RETRY_ATTEMPTS; i++) {
+    if (i > 0) {
+      onRetry(i, lastErr);
+      await new Promise(r => setTimeout(r, RETRY_DELAY_MS));
+    }
+    try {
+      return await fn();
+    } catch (err) {
+      const e = err as Error;
+      lastErr = e;
+      // Only retry on SSH connection failures (exit code 255); other codes are
+      // script/command errors that should not be re-executed automatically.
+      if (!(err instanceof RemoteExitError) || err.exitCode !== 255) throw e;
+    }
+  }
+  throw lastErr;
+}
+
 function makeStreamCb(serverName: string, logger: ServerLogger, fileLogger: FileLogger) {
   return {
     onStdout: (data: string) => {
@@ -48,17 +74,29 @@ export async function deployServer(opts: DeployServerOptions): Promise<void> {
   const target = buildTarget(config);
   const cb = makeStreamCb(serverName, logger, fileLogger);
 
+  const retryLog = (label: string) => (attempt: number, err: Error) =>
+    logger.log(`{yellow-fg}${label}: connection lost (${err.message}), retrying (${attempt}/${RETRY_ATTEMPTS - 1})...{/yellow-fg}`);
+
   logger.log('{cyan-fg}Creating remote base directory...{/cyan-fg}');
-  await execRemoteSimple(target, `mkdir -p ${remotePath}`, cb);
+  await withRetry(
+    () => execRemoteSimple(target, `mkdir -p ${remotePath}`, cb),
+    retryLog('mkdir')
+  );
 
   if (existsSync(assetsDir)) {
     logger.log('{cyan-fg}Uploading assets...{/cyan-fg}');
-    await scpUpload(target, assetsDir, remotePath + '/', cb);
+    await withRetry(
+      () => scpUpload(target, assetsDir, remotePath + '/', cb),
+      retryLog('Asset upload')
+    );
   }
 
   if (existsSync(scriptsDir) && (scripts.length > 0 || exec)) {
     logger.log('{cyan-fg}Uploading scripts...{/cyan-fg}');
-    await scpUpload(target, scriptsDir, remotePath + '/', cb);
+    await withRetry(
+      () => scpUpload(target, scriptsDir, remotePath + '/', cb),
+      retryLog('Script upload')
+    );
   }
 
   const injectedEnv: Record<string, string> = {
@@ -84,11 +122,14 @@ export async function deployServer(opts: DeployServerOptions): Promise<void> {
       .map(([k, v]) => `export ${k}='${v.replace(/'/g, "'\\''")}'`)
       .join('; ');
     const cmd = `cd ${remotePath} && ${envExportString}; ${exec}`;
-    await execRemoteStreaming(target, cmd, {
-      ...cb,
-      onChild: (child: ChildProcess) => logger.setActiveChild(child),
-      onChildExit: () => logger.setActiveChild(null),
-    });
+    await withRetry(
+      () => execRemoteStreaming(target, cmd, {
+        ...cb,
+        onChild: (child: ChildProcess) => logger.setActiveChild(child),
+        onChildExit: () => logger.setActiveChild(null),
+      }),
+      retryLog(`exec: ${exec}`)
+    );
     onScriptDone();
   } else {
     for (const script of scripts) {
@@ -101,11 +142,14 @@ export async function deployServer(opts: DeployServerOptions): Promise<void> {
         `${envString} ./${scriptSubdir}/${script}`,
       ].join(' && ');
 
-      await execRemoteStreaming(target, cmd, {
-        ...cb,
-        onChild: (child: ChildProcess) => logger.setActiveChild(child),
-        onChildExit: () => logger.setActiveChild(null),
-      });
+      await withRetry(
+        () => execRemoteStreaming(target, cmd, {
+          ...cb,
+          onChild: (child: ChildProcess) => logger.setActiveChild(child),
+          onChildExit: () => logger.setActiveChild(null),
+        }),
+        retryLog(`script: ${script}`)
+      );
 
       onScriptDone();
     }
