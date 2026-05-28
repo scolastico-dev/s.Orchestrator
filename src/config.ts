@@ -13,6 +13,10 @@ const ServerConfigSchema = z
       .record(z.string(), z.string())
       .optional()
       .describe('Environment variables injected into each script execution'),
+    importedEnv: z
+      .array(z.string())
+      .optional()
+      .describe('Names of local shell environment variables to import and forward to each script execution'),
   })
   .describe('Configuration for a single remote server');
 
@@ -77,6 +81,11 @@ export function generateJsonSchema(): Record<string, unknown> {
           type: 'object',
           additionalProperties: { type: 'string' },
           description: 'Environment variables injected into each script execution',
+        },
+        importedEnv: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Names of local shell environment variables to import and forward to each script execution',
         },
       },
       additionalProperties: false,

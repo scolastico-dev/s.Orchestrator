@@ -171,6 +171,45 @@ describe.skipIf(SKIP)('deploy integration tests (requires Docker)', () => {
     expect(allOutput).not.toContain('script-was-executed');
   });
 
+  it('deployServer forwards importedEnv vars from process.env to the remote', async () => {
+    const logDir = join(workDir, 'imported-env-logs');
+    mkdirSync(logDir, { recursive: true });
+
+    process.env.ORCH_TEST_IMPORTED = 'forwarded-secret-99';
+    const logger = makeSilentLogger();
+    const fileLogger = new FileLogger(logDir);
+    fileLogger.register('import-env-server');
+
+    try {
+      await deployServer({
+        serverName: 'import-env-server',
+        config: {
+          ip: container.host,
+          port: container.port,
+          user: container.user,
+          keyFile: container.privateKeyPath,
+          knownHostsFile: container.knownHostsPath,
+          hostKeys: await container.getHostKeys(),
+          importedEnv: ['ORCH_TEST_IMPORTED'],
+        },
+        scripts: [],
+        exec: 'echo "imported=$ORCH_TEST_IMPORTED"',
+        assetsDir: join(workDir, 'assets-none-import-env'),
+        scriptsDir: join(workDir, 'scripts-none-import-env'),
+        remotePath: '/tmp/s-orch-deploy-import-env',
+        logger,
+        fileLogger,
+        onScriptDone: vi.fn(),
+      });
+    } finally {
+      delete process.env.ORCH_TEST_IMPORTED;
+    }
+
+    const writeMock = logger.write as ReturnType<typeof vi.fn>;
+    const allOutput: string = writeMock.mock.calls.map((c: unknown[]) => String(c[0])).join('');
+    expect(allOutput).toContain('imported=forwarded-secret-99');
+  });
+
   it('deployServer --exec receives injected env vars', async () => {
     const logDir = join(workDir, 'exec-env-logs');
     mkdirSync(logDir, { recursive: true });

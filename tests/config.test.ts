@@ -51,6 +51,40 @@ describe('config validation', () => {
     }
   });
 
+  it('accepts importedEnv as a string array', () => {
+    const raw = JSON.stringify({
+      srv: { ip: '10.0.0.1', importedEnv: ['MY_SECRET', 'API_KEY'] },
+    });
+    const { path, cleanup } = writeTempFile(raw);
+    try {
+      const cfg = loadConfig(path);
+      expect(cfg.srv.importedEnv).toEqual(['MY_SECRET', 'API_KEY']);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('importedEnv defaults to undefined when not specified', () => {
+    const raw = JSON.stringify({ srv: { ip: '10.0.0.1' } });
+    const { path, cleanup } = writeTempFile(raw);
+    try {
+      const cfg = loadConfig(path);
+      expect(cfg.srv.importedEnv).toBeUndefined();
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('rejects importedEnv containing non-string entries', () => {
+    const raw = JSON.stringify({ bad: { ip: '1.2.3.4', importedEnv: [42] } });
+    const { path, cleanup } = writeTempFile(raw);
+    try {
+      expect(() => loadConfig(path)).toThrow('Config validation failed');
+    } finally {
+      cleanup();
+    }
+  });
+
   it('rejects a config with missing ip', () => {
     const raw = JSON.stringify({ bad: { port: 22 } });
     const { path, cleanup } = writeTempFile(raw);
@@ -111,5 +145,6 @@ describe('JSON schema export', () => {
     expect(json).toContain('ip');
     expect(json).toContain('port');
     expect(json).toContain('hostKeys');
+    expect(json).toContain('importedEnv');
   });
 });

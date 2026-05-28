@@ -470,6 +470,71 @@ describe.skipIf(SKIP_DOCKER)('lite-version.sh — integration tests (requires Do
     expect(r.stdout).toContain('custom=from-exec');
   });
 
+  it('importedEnv forwards listed local env vars to the remote via --exec', async () => {
+    const testDir = join(workDir, 'imported-env-exec');
+    mkdirSync(testDir, { recursive: true });
+
+    const configPath = join(testDir, 'config.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify(await buildConfig({ importedEnv: ['ORCH_LITE_SECRET'] }))
+    );
+
+    const r = runScript(
+      ['-c', configPath, '-y', '--exec', 'echo "secret=$ORCH_LITE_SECRET"'],
+      { cwd: testDir, env: { HOME: fakeHome, ORCH_LITE_SECRET: 'lite-forwarded-42' } }
+    );
+
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('secret=lite-forwarded-42');
+  });
+
+  it('importedEnv forwards listed local env vars to the remote via scripts', async () => {
+    const testDir = join(workDir, 'imported-env-script');
+    const scriptsDir = join(testDir, 'scripts');
+    mkdirSync(scriptsDir, { recursive: true });
+
+    writeFileSync(
+      join(scriptsDir, '01-imported.sh'),
+      '#!/bin/sh\necho "imported=$ORCH_LITE_SCRIPT_SECRET"\n',
+      { mode: 0o755 }
+    );
+
+    const configPath = join(testDir, 'config.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify(await buildConfig({ importedEnv: ['ORCH_LITE_SCRIPT_SECRET'] }))
+    );
+
+    const r = runScript(
+      ['-c', configPath, '-y', '--scripts-dir', scriptsDir],
+      { cwd: testDir, env: { HOME: fakeHome, ORCH_LITE_SCRIPT_SECRET: 'script-forwarded-99' } }
+    );
+
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('imported=script-forwarded-99');
+  });
+
+  it('importedEnv does not forward vars that are not set locally', async () => {
+    const testDir = join(workDir, 'imported-env-unset');
+    mkdirSync(testDir, { recursive: true });
+
+    const configPath = join(testDir, 'config.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify(await buildConfig({ importedEnv: ['ORCH_LITE_NOT_SET_VAR'] }))
+    );
+
+    // Explicitly omit ORCH_LITE_NOT_SET_VAR from the environment
+    const r = runScript(
+      ['-c', configPath, '-y', '--exec', 'echo "val=${ORCH_LITE_NOT_SET_VAR:-empty}"'],
+      { cwd: testDir, env: { HOME: fakeHome } }
+    );
+
+    expect(r.status).toBe(0);
+    expect(r.stdout).toContain('val=empty');
+  });
+
   it('--exec fails the deployment when the command exits non-zero', async () => {
     const testDir = join(workDir, 'exec-fail');
     mkdirSync(testDir, { recursive: true });

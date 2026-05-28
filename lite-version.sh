@@ -374,6 +374,15 @@ deploy_server() {
   env_pairs+=("ASSET_DIR=$REMOTE_PATH/$asset_dir_name")
   env_pairs+=("SCRIPT_DIR=$REMOTE_PATH/$scripts_dir_name")
 
+  # Import env vars listed in importedEnv from the local shell (before server env so server env can override)
+  while IFS= read -r env_name; do
+    [[ -z "$env_name" ]] && continue
+    # ${!env_name+x} is non-empty when the variable is set (even if empty)
+    if [[ -n "${!env_name+x}" ]]; then
+      env_pairs+=("$env_name=${!env_name}")
+    fi
+  done < <(jq -r --arg n "$name" '.[$n].importedEnv // [] | .[]' "$CONFIG_PATH")
+
   # Merge server-defined env vars (may override above)
   while IFS='=' read -r k v; do
     env_pairs+=("$k=$v")

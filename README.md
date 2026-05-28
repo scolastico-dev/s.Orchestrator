@@ -157,6 +157,7 @@ The config file is a JSON object whose **keys are server names** and whose **val
 | `keyFile`        | `string`                | -        | Path to SSH private key file                                                                       |
 | `knownHostsFile` | `string`                | -        | Path to a custom `known_hosts` file (useful in CI/CD)                                              |
 | `env`            | `Record<string,string>` | -        | Extra environment variables injected into each script (merged on top of the default injected vars) |
+| `importedEnv`    | `string[]`              | `[]`     | Names of local shell environment variables to read at runtime and forward to each remote script    |
 
 ### Export JSON Schema
 
@@ -188,6 +189,34 @@ Every script execution receives the following environment variables automaticall
 | `SCRIPT_DIR`      | Absolute remote path where scripts were uploaded |
 
 Variables defined in the server's `env` block are merged on top, so they can override any of the above if needed.
+
+### Importing local environment variables
+
+`importedEnv` lets you forward specific variables from the shell that runs s.Orchestrator to each remote script — without hard-coding their values in `config.json`. Variables not present in the local environment are silently skipped. The import happens before the `env` block is applied, so `env` entries take precedence over imported values.
+
+```json
+{
+  "web": {
+    "ip": "203.0.113.10",
+    "importedEnv": ["DB_PASSWORD", "API_KEY"]
+  }
+}
+```
+
+This is especially useful with [dotenvx](https://dotenvx.com), which can decrypt an encrypted `.env` file and inject the secrets into the local shell before s.Orchestrator runs:
+
+```bash
+# Decrypt .env.vault, inject secrets locally, then forward listed ones to remote servers
+dotenvx run --quiet -- sh -c 's-orchestrator'
+```
+
+The lite version works the same way:
+
+```bash
+dotenvx run --quiet -- sh -c 'bash lite-version.sh'
+```
+
+`dotenvx` makes `DB_PASSWORD` and `API_KEY` available in the local environment; `importedEnv` picks them up and forwards only those two to each remote script. Nothing else from the local environment is exposed.
 
 ## CLI Reference
 

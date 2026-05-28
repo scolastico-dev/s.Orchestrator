@@ -99,6 +99,12 @@ export async function deployServer(opts: DeployServerOptions): Promise<void> {
     );
   }
 
+  const importedFromLocal: Record<string, string> = {};
+  for (const name of config.importedEnv ?? []) {
+    const val = process.env[name];
+    if (val !== undefined) importedFromLocal[name] = val;
+  }
+
   const injectedEnv: Record<string, string> = {
     SERVER_NAME: serverName,
     SERVER_IP: config.ip,
@@ -106,6 +112,7 @@ export async function deployServer(opts: DeployServerOptions): Promise<void> {
     SERVER_SSH_PORT: String(config.port ?? 22),
     ASSET_DIR: `${remotePath}/${basename(assetsDir)}`,
     SCRIPT_DIR: `${remotePath}/${basename(scriptsDir)}`,
+    ...importedFromLocal,
     ...config.env,
   };
 
