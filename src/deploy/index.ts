@@ -16,7 +16,8 @@ export async function runDeployment(
   scripts: string[]
 ): Promise<void> {
   const servers = Object.entries(config);
-  const totalExecutions = servers.length * scripts.length;
+  const effectiveCount = options.exec ? 1 : scripts.length;
+  const totalExecutions = servers.length * effectiveCount;
 
   // --- Host key enforcement ---
   const { configChanged, mismatches } = await enforceHostKeys(config, ui.confirm, options.dryRun);
@@ -77,13 +78,13 @@ export async function runDeployment(
       const logger = ui.getLogger(name);
 
       if (!connectionOk.get(name)) {
-        totalExecuted += scripts.length;
+        totalExecuted += effectiveCount;
         serversDone++;
         ui.markServerDone(name, false);
         ui.updateStatus({
           serverName: name,
           scriptsDone: 0,
-          totalScripts: scripts.length,
+          totalScripts: effectiveCount,
           totalExecuted,
           totalToExecute: totalExecutions,
           serversDone,
@@ -94,13 +95,13 @@ export async function runDeployment(
 
       if (options.dryRun) {
         logger.log('{yellow-fg}[DRY RUN] Would deploy to this server{/yellow-fg}');
-        totalExecuted += scripts.length;
+        totalExecuted += effectiveCount;
         serversDone++;
         ui.markServerDone(name, true);
         ui.updateStatus({
           serverName: name,
-          scriptsDone: scripts.length,
-          totalScripts: scripts.length,
+          scriptsDone: effectiveCount,
+          totalScripts: effectiveCount,
           totalExecuted,
           totalToExecute: totalExecutions,
           serversDone,
@@ -116,6 +117,7 @@ export async function runDeployment(
           serverName: name,
           config: data,
           scripts,
+          exec: options.exec,
           assetsDir: options.assetsDir,
           scriptsDir: options.scriptsDir,
           remotePath: options.remotePath,
@@ -127,7 +129,7 @@ export async function runDeployment(
             ui.updateStatus({
               serverName: name,
               scriptsDone,
-              totalScripts: scripts.length,
+              totalScripts: effectiveCount,
               totalExecuted,
               totalToExecute: totalExecutions,
               serversDone,
@@ -140,7 +142,7 @@ export async function runDeployment(
         ui.markServerDone(name, true);
       } catch (err) {
         logger.log(`{red-fg}ERROR: ${(err as Error).message}{/red-fg}`);
-        totalExecuted += scripts.length - scriptsDone;
+        totalExecuted += effectiveCount - scriptsDone;
         serversDone++;
         deployFailed.add(name);
         ui.markServerDone(name, false);
@@ -149,7 +151,7 @@ export async function runDeployment(
       ui.updateStatus({
         serverName: name,
         scriptsDone,
-        totalScripts: scripts.length,
+        totalScripts: effectiveCount,
         totalExecuted,
         totalToExecute: totalExecutions,
         serversDone,

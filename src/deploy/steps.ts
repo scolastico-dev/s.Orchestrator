@@ -11,6 +11,7 @@ export interface DeployServerOptions {
   serverName: string;
   config: ServerConfig;
   scripts: string[];
+  exec?: string;
   assetsDir: string;
   scriptsDir: string;
   remotePath: string;
@@ -43,7 +44,7 @@ function makeStreamCb(serverName: string, logger: ServerLogger, fileLogger: File
 }
 
 export async function deployServer(opts: DeployServerOptions): Promise<void> {
-  const { serverName, config, scripts, assetsDir, scriptsDir, remotePath, logger, fileLogger, onScriptDone } = opts;
+  const { serverName, config, scripts, exec, assetsDir, scriptsDir, remotePath, logger, fileLogger, onScriptDone } = opts;
   const target = buildTarget(config);
   const cb = makeStreamCb(serverName, logger, fileLogger);
 
@@ -55,7 +56,7 @@ export async function deployServer(opts: DeployServerOptions): Promise<void> {
     await scpUpload(target, assetsDir, remotePath + '/', cb);
   }
 
-  if (scripts.length > 0 && existsSync(scriptsDir)) {
+  if (existsSync(scriptsDir) && (scripts.length > 0 || exec)) {
     logger.log('{cyan-fg}Uploading scripts...{/cyan-fg}');
     await scpUpload(target, scriptsDir, remotePath + '/', cb);
   }
@@ -74,26 +75,34 @@ export async function deployServer(opts: DeployServerOptions): Promise<void> {
     .map(([k, v]) => `${k}='${v.replace(/'/g, "'\\''")}'`)
     .join(' ');
 
-  let scriptsDone = 0;
-
-  for (const script of scripts) {
-    logger.log(`{cyan-fg}Running: ${script}{/cyan-fg}`);
-
-    const scriptSubdir = basename(scriptsDir);
-    const cmd = [
-      `cd ${remotePath}`,
-      `chmod +x ./${scriptSubdir}/${script}`,
-      `${envString} ./${scriptSubdir}/${script}`,
-    ].join(' && ');
-
+  if (exec) {
+    logger.log(`{cyan-fg}Running: ${exec}{/cyan-fg}`);
+    const cmd = `cd ${remotePath} && ${envString} ${exec}`;
     await execRemoteStreaming(target, cmd, {
       ...cb,
       onChild: (child: ChildProcess) => logger.setActiveChild(child),
       onChildExit: () => logger.setActiveChild(null),
     });
-
-    scriptsDone++;
     onScriptDone();
+  } else {
+    for (const script of scripts) {
+      logger.log(`{cyan-fg}Running: ${script}{/cyan-fg}`);
+
+      const scriptSubdir = basename(scriptsDir);
+      const cmd = [
+        `cd ${remotePath}`,
+        `chmod +x ./${scriptSubdir}/${script}`,
+        `${envString} ./${scriptSubdir}/${script}`,
+      ].join(' && ');
+
+      await execRemoteStreaming(target, cmd, {
+        ...cb,
+        onChild: (child: ChildProcess) => logger.setActiveChild(child),
+        onChildExit: () => logger.setActiveChild(null),
+      });
+
+      onScriptDone();
+    }
   }
 
   logger.log('{cyan-fg}Cleaning up remote directory...{/cyan-fg}');

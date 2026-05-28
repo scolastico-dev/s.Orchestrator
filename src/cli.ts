@@ -32,6 +32,11 @@ export function parseArgs(argv: string[] = process.argv): CliOptions {
     .option('--assets-dir <path>', 'local directory to upload as assets', 'assets')
     .option('--scripts-dir <path>', 'local directory containing .sh scripts to execute', 'scripts')
     .option('--remote-path <path>', 'remote base path for uploaded files', '/tmp/s-orchestrator')
+    .option('--exec <command>', 'run a single command on each server instead of the scripts directory (assets and scripts are still uploaded)')
+    .option(
+      '--servers <names>',
+      'comma-separated list of server names to target; all others are skipped'
+    )
     .helpOption('-h, --help', 'display this help message')
     .addHelpText(
       'after',
@@ -42,6 +47,8 @@ Examples:
   s-orchestrator --dry-run --ugly         dry run with plain output
   s-orchestrator --schema schema.json     export config JSON schema to file
   s-orchestrator --schema                 print config JSON schema to stdout
+  s-orchestrator --exec "systemctl restart nginx"   run one command on all servers
+  s-orchestrator --servers web,db         deploy only to the "web" and "db" servers
 `
     )
     .parse(argv);
@@ -56,6 +63,8 @@ Examples:
     assetsDir: string;
     scriptsDir: string;
     remotePath: string;
+    exec: string | undefined;
+    servers: string | undefined;
   }>();
 
   return {
@@ -68,5 +77,7 @@ Examples:
     assetsDir: opts.assetsDir,
     scriptsDir: opts.scriptsDir,
     remotePath: opts.remotePath,
+    exec: opts.exec,
+    servers: opts.servers ? opts.servers.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
   };
 }

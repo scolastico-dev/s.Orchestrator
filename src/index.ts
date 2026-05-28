@@ -18,7 +18,18 @@ async function main(): Promise<void> {
   }
 
   // Load and validate config
-  const config = loadConfig(options.configPath);
+  const fullConfig = loadConfig(options.configPath);
+  let config = fullConfig;
+
+  if (options.servers && options.servers.length > 0) {
+    const unknown = options.servers.filter((s) => !(s in fullConfig));
+    if (unknown.length > 0) {
+      process.stderr.write(`Unknown server(s): ${unknown.join(', ')}\n`);
+      process.exit(1);
+    }
+    config = Object.fromEntries(options.servers.map((s) => [s, fullConfig[s]]));
+  }
+
   const serverNames = Object.keys(config);
 
   if (serverNames.length === 0) {

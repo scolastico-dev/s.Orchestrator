@@ -10,6 +10,8 @@ export interface CliOptions {
   assetsDir: string;
   scriptsDir: string;
   remotePath: string;
+  exec?: string;
+  servers?: string[];
 }
 
 export interface ExecResult {

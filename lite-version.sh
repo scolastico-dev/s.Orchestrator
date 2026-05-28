@@ -5,6 +5,50 @@ set -euo pipefail
 # s.Orchestrator Lite — single-file bash version, sequential deployment
 # ---------------------------------------------------------------------------
 
+ORIGINAL_ARGS=("$@")
+
+# --- Self-update check ------------------------------------------------------
+SELF_UPDATE_URL="https://raw.githubusercontent.com/scolastico-dev/s.Orchestrator/main/lite-version.sh"
+
+self_update_check() {
+  local self_path
+  self_path="$(realpath "$0" 2>/dev/null || true)"
+  # Skip if not a real file on disk (e.g. piped via curl | bash)
+  [[ -z "$self_path" || ! -f "$self_path" ]] && return
+  # Skip if curl is unavailable
+  command -v curl &>/dev/null || return
+  # Skip if no md5 tool is available
+  command -v md5sum &>/dev/null || command -v md5 &>/dev/null || return
+
+  local latest
+  latest="$(curl -sSfL "$SELF_UPDATE_URL" 2>/dev/null || true)"
+  [[ -z "$latest" ]] && return
+
+  local current_md5 latest_md5
+  if command -v md5sum &>/dev/null; then
+    current_md5="$(md5sum "$self_path" | awk '{print $1}')"
+    latest_md5="$(printf '%s' "$latest" | md5sum | awk '{print $1}')"
+  else
+    current_md5="$(md5 -q "$self_path")"
+    latest_md5="$(printf '%s' "$latest" | md5 -q)"
+  fi
+
+  [[ "$current_md5" == "$latest_md5" ]] && return
+
+  echo ""
+  echo "  A newer version of s.Orchestrator Lite is available!"
+  read -r -p "  Update now? [y/N] " _upd_answer || _upd_answer=""
+  if [[ "$_upd_answer" =~ ^[Yy]$ ]]; then
+    printf '%s\n' "$latest" > "$self_path"
+    chmod +x "$self_path"
+    echo "  Updated! Restarting..."
+    exec "$self_path" "${ORIGINAL_ARGS[@]}"
+  fi
+  echo ""
+}
+
+self_update_check
+
 # --- Dependency check -------------------------------------------------------
 MISSING=()
 for cmd in ssh scp ssh-keyscan ssh-keygen jq; do
@@ -23,6 +67,8 @@ REMOTE_PATH="/tmp/s-orchestrator"
 LOG_DIR="logs"
 SKIP_CONFIRM=0
 DRY_RUN=0
+EXEC_CMD=""
+SERVERS_FILTER=""
 
 # --- CLI parsing ------------------------------------------------------------
 usage() {
@@ -37,20 +83,25 @@ Options:
   --assets-dir <path>       local assets directory to upload    (default: assets)
   --scripts-dir <path>      local scripts directory             (default: scripts)
   --remote-path <path>      remote working directory            (default: /tmp/s-orchestrator)
+  --exec <command>          run one command instead of the scripts dir
+                            (assets and scripts are still uploaded)
+  --servers <names>         comma-separated list of server names to target
   -h, --help                display this help
 EOF
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -c|--config)      CONFIG_PATH="$2"; shift 2 ;;
-    -y|--skip-confirm) SKIP_CONFIRM=1; shift ;;
-    -n|--dry-run)     DRY_RUN=1; shift ;;
-    --log-dir)        LOG_DIR="$2"; shift 2 ;;
-    --assets-dir)     ASSETS_DIR="$2"; shift 2 ;;
-    --scripts-dir)    SCRIPTS_DIR="$2"; shift 2 ;;
-    --remote-path)    REMOTE_PATH="$2"; shift 2 ;;
-    -h|--help)        usage; exit 0 ;;
+    -c|--config)        CONFIG_PATH="$2"; shift 2 ;;
+    -y|--skip-confirm)  SKIP_CONFIRM=1; shift ;;
+    -n|--dry-run)       DRY_RUN=1; shift ;;
+    --log-dir)          LOG_DIR="$2"; shift 2 ;;
+    --assets-dir)       ASSETS_DIR="$2"; shift 2 ;;
+    --scripts-dir)      SCRIPTS_DIR="$2"; shift 2 ;;
+    --remote-path)      REMOTE_PATH="$2"; shift 2 ;;
+    --exec)             EXEC_CMD="$2"; shift 2 ;;
+    --servers)          SERVERS_FILTER="$2"; shift 2 ;;
+    -h|--help)          usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
   esac
 done
@@ -71,6 +122,29 @@ INVALID=$(jq -r 'to_entries[] | select(.value.ip == null or .value.ip == "") | .
 if [[ -n "$INVALID" ]]; then
   echo "ERROR: Missing required 'ip' field for servers: $INVALID" >&2
   exit 1
+fi
+
+# --- Build server list (with optional filter) --------------------------------
+mapfile -t ALL_SERVERS < <(jq -r 'keys[]' "$CONFIG_PATH")
+
+if [[ -n "$SERVERS_FILTER" ]]; then
+  IFS=',' read -ra FILTER_LIST <<< "$SERVERS_FILTER"
+  SERVERS=()
+  UNKNOWN=()
+  for _name in "${FILTER_LIST[@]}"; do
+    _name="${_name// /}"  # trim spaces
+    if jq -e --arg n "$_name" '.[$n]' "$CONFIG_PATH" &>/dev/null; then
+      SERVERS+=("$_name")
+    else
+      UNKNOWN+=("$_name")
+    fi
+  done
+  if [[ ${#UNKNOWN[@]} -gt 0 ]]; then
+    echo "ERROR: Unknown server(s): ${UNKNOWN[*]}" >&2
+    exit 1
+  fi
+else
+  SERVERS=("${ALL_SERVERS[@]}")
 fi
 
 # --- Collect scripts --------------------------------------------------------
@@ -115,9 +189,6 @@ mkdir -p "$HOME/.ssh" && chmod 700 "$HOME/.ssh"
 
 enforce_host_keys() {
   local mismatches=()
-
-  # Read server names
-  mapfile -t SERVERS < <(jq -r 'keys[]' "$CONFIG_PATH")
 
   # Phase 1: TOFU — fetch and confirm all key types for servers with no stored keys
   for name in "${SERVERS[@]}"; do
@@ -175,9 +246,6 @@ enforce_host_keys() {
       mv "$tmp" "$CONFIG_PATH"
     fi
   done
-
-  # Re-read config (may have been updated above)
-  mapfile -t SERVERS < <(jq -r 'keys[]' "$CONFIG_PATH")
 
   # Phase 2: verify each stored key type against known_hosts; collect all mismatches
   for name in "${SERVERS[@]}"; do
@@ -329,19 +397,18 @@ deploy_server() {
       >> "$LOG_DIR/$name.log" 2>&1
   fi
 
-  # Step 3: upload scripts (if any)
-  if [[ ${#SCRIPTS[@]} -gt 0 && -d "$SCRIPTS_DIR" ]]; then
+  # Step 3: upload scripts dir (if exec mode or scripts exist)
+  if [[ -d "$SCRIPTS_DIR" && ( -n "$EXEC_CMD" || ${#SCRIPTS[@]} -gt 0 ) ]]; then
     log_server "$name" "Uploading scripts..."
     scp "${scp_opts[@]}" "${scp_port_arg[@]}" -r \
       "$SCRIPTS_DIR" "${user}@${ip}:${REMOTE_PATH}/" \
       >> "$LOG_DIR/$name.log" 2>&1
   fi
 
-  # Step 4: run each script
-  for script in "${SCRIPTS[@]}"; do
-    log_server "$name" "Running: $script"
-    local cmd="cd ${REMOTE_PATH} && chmod +x ./${scripts_dir_name}/${script} && ${env_string}./${scripts_dir_name}/${script}"
-    # Run ssh, tee output to log and stdout (prefixed), preserve ssh exit code
+  # Step 4: run command(s)
+  if [[ -n "$EXEC_CMD" ]]; then
+    log_server "$name" "Running: $EXEC_CMD"
+    local cmd="cd ${REMOTE_PATH} && ${env_string}${EXEC_CMD}"
     local ssh_rc=0
     ssh "${ssh_opts[@]}" -tt "${user}@${ip}" "$cmd" 2>&1 \
       | tee -a "$LOG_DIR/$name.log" \
@@ -350,7 +417,20 @@ deploy_server() {
     if [[ "$ssh_rc" -ne 0 ]]; then
       return "$ssh_rc"
     fi
-  done
+  else
+    for script in "${SCRIPTS[@]}"; do
+      log_server "$name" "Running: $script"
+      local cmd="cd ${REMOTE_PATH} && chmod +x ./${scripts_dir_name}/${script} && ${env_string}./${scripts_dir_name}/${script}"
+      local ssh_rc=0
+      ssh "${ssh_opts[@]}" -tt "${user}@${ip}" "$cmd" 2>&1 \
+        | tee -a "$LOG_DIR/$name.log" \
+        | sed "s/^/[$name] /" \
+        || ssh_rc="${PIPESTATUS[0]}"
+      if [[ "$ssh_rc" -ne 0 ]]; then
+        return "$ssh_rc"
+      fi
+    done
+  fi
 
   # Step 5: cleanup
   log_server "$name" "Cleaning up remote directory..."
@@ -366,9 +446,6 @@ echo ""
 
 # Enforce host keys
 enforce_host_keys
-
-# Re-read server list (config may have been updated with new host keys)
-mapfile -t SERVERS < <(jq -r 'keys[]' "$CONFIG_PATH")
 
 if [[ ${#SERVERS[@]} -eq 0 ]]; then
   echo "ERROR: No servers found in config." >&2

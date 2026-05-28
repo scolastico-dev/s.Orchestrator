@@ -2,7 +2,7 @@
 
 An SSH deployment orchestrator that uploads local assets and runs shell scripts across multiple remote servers **in parallel**, with a full-featured terminal UI (or plain log output for CI/CD environments).
 
-```log
+```text
 ┌─[web] ───────────────────────────────────────────────────────────────────────┐
 │ Checking connection...                                                       │
 │ Connection OK                                                                │
@@ -46,42 +46,8 @@ When you need to provision a machine, deploy an app, or apply quick updates acro
 * **Injected environment variables** - every script receives a standard set of server variables automatically; additional per-server variables can be added via `env` in the config
 * **Optional key file** - specify a per-server SSH private key; falls back to the SSH agent/defaults
 * **Per-server log files** - each server's output is saved to `logs/<name>.log`
-
-## Lite Version
-
-For environments where Node.js is unavailable, a self-contained bash implementation is provided in [`lite-version.sh`](./lite-version.sh). It shares the same config format and feature set but deploys servers **sequentially** and has no TUI.
-
-**Requirements:** `bash`, `ssh`, `scp`, `ssh-keyscan`, `ssh-keygen`, `jq`
-
-```bash
-# Run directly (no build or Node.js required)
-curl -sSL https://raw.githubusercontent.com/scolastico-dev/orchestrator/main/lite-version.sh | bash -s -- [options]
-```
-
-The lite version supports all the same options as the full version except `--ugly` and `--schema`:
-
-```log
-Options:
-  -c, --config <path>       path to config JSON file            (default: config.json)
-  -y, --skip-confirm         skip confirmation after connection tests
-  -n, --dry-run             test connections, do not deploy
-  --log-dir <path>          directory for per-server log files  (default: logs)
-  --assets-dir <path>       local assets directory to upload    (default: assets)
-  --scripts-dir <path>      local scripts directory             (default: scripts)
-  --remote-path <path>      remote working directory            (default: /tmp/s-orchestrator)
-```
-
-| Feature                      | Full version | Lite version    |
-|------------------------------|--------------|-----------------|
-| Parallel deployment          | yes          | no - sequential |
-| TUI / plain mode             | yes          | plain only      |
-| Host key enforcement (TOFU)  | yes          | yes             |
-| Env injection                | yes          | yes             |
-| Dry-run mode                 | yes          | yes             |
-| Per-server log files         | yes          | yes             |
-| `keyFile` / `knownHostsFile` | yes          | yes             |
-| JSON schema export           | yes          | no              |
-| Node.js required             | yes          | no              |
+* **Single-command exec (`--exec`)** - run one ad-hoc command on all servers instead of the scripts directory (assets and scripts are still uploaded)
+* **Server filter (`--servers`)** - target a subset of servers by name; all others are skipped
 
 ## Installation
 
@@ -137,7 +103,7 @@ node dist/index.js [options]
 
 ## Quick Start
 
-**1. Create `config.json`**
+### 1. Create `config.json`
 
 ```json
 {
@@ -156,19 +122,19 @@ node dist/index.js [options]
 }
 ```
 
-**2. Add your scripts**
-
-```log
-scripts/
-  01-update.sh
-  02-restart.sh
-```
+### 2. Add your scripts
 
 > It's important to prefix your scripts with numbers to ensure they run in the correct order, as they are executed in lexicographic order.
 
+```text
+scripts/
+  10-update.sh
+  20-restart.sh
+```
+
 > Ensure all scripts are written in a "upsert" style, meaning they can be run multiple times without causing issues. s.Orchestrator does not enforce idempotency, so your scripts should be designed to handle repeated executions gracefully.
 
-**3. Run**
+### 3. Run
 
 ```bash
 s-orchestrator
@@ -225,13 +191,13 @@ Variables defined in the server's `env` block are merged on top, so they can ove
 
 ## CLI Reference
 
-```
+```text
 Usage: s-orchestrator [options]
 
 Options:
   -v, --version             print version and exit
   -c, --config <path>       path to config JSON file            (default: "config.json")
-  -y, --skip-confirm         skip confirmation after connection tests
+  -y, --skip-confirm        skip confirmation after connection tests
   -n, --dry-run             test connections, do not deploy
   --schema [path]           export JSON schema for config
   --ugly                    plain log output, no TUI
@@ -239,6 +205,9 @@ Options:
   --assets-dir <path>       local assets directory to upload    (default: "assets")
   --scripts-dir <path>      local scripts directory             (default: "scripts")
   --remote-path <path>      remote working directory            (default: "/tmp/s-orchestrator")
+  --exec <command>          run one command on each server instead of scripts dir
+                            (assets and scripts are still uploaded)
+  --servers <names>         comma-separated server names to target; others are skipped
   -h, --help                display help
 ```
 
@@ -259,6 +228,15 @@ s-orchestrator --ugly -y -c /etc/deploy/config.json
 
 # Export the JSON schema
 s-orchestrator --schema > config.schema.json
+
+# Run a single ad-hoc command across all servers
+s-orchestrator --exec "systemctl restart nginx" -y
+
+# Deploy only to specific servers
+s-orchestrator --servers web,db-primary
+
+# Combine: one command, specific servers, no prompt
+s-orchestrator --exec "docker pull myapp:latest" --servers web1,web2 -y
 ```
 
 ## Deployment Flow
@@ -270,18 +248,16 @@ For each run, s.Orchestrator:
 3. **Tests connections** to all servers in parallel - aborts immediately if any connection fails
 4. **Prompts to start** (unless `--skip-confirm`)
 5. **Deploys to all servers in parallel**:
-* Creates `<remote-path>/` on the remote
-* Uploads `assets/` (if present)
-* Uploads `scripts/`
-* Executes each `.sh` script in lexicographic order with injected environment variables
-* Cleans up `<remote-path>/` on the remote
-
-
+   * Creates `<remote-path>/` on the remote
+   * Uploads `assets/` (if present)
+   * Uploads `scripts/` (if present, even when `--exec` is used)
+   * Executes each `.sh` script in lexicographic order **or** the single `--exec` command, with injected environment variables
+   * Cleans up `<remote-path>/` on the remote
 6. **Displays final status** - Ctrl+C after this point exits cleanly without an abort prompt
 
 ## Directory Layout
 
-```
+```text
 your-project/
 ├── config.json          # server config (managed by s.Orchestrator)
 ├── assets/              # files uploaded verbatim (optional)
@@ -290,6 +266,46 @@ your-project/
     ├── 01-update.sh
     └── 02-restart.sh
 ```
+
+## Lite Version
+
+For environments where Node.js is unavailable, a self-contained bash implementation is provided in [`lite-version.sh`](./lite-version.sh). It shares the same config format and feature set but deploys servers **sequentially** and has no TUI.
+
+**Requirements:** `bash`, `curl`, `ssh`, `scp`, `ssh-keyscan`, `ssh-keygen`, `jq`
+
+```bash
+# Run directly (no build or Node.js required)
+curl -sSL https://raw.githubusercontent.com/scolastico-dev/orchestrator/main/lite-version.sh | bash -s -- [options]
+```
+
+The lite version supports all the same options as the full version except `--ugly` and `--schema`. It also **self-updates**: on each run, if it is installed as a file on disk and `curl`/`md5sum` are available, it checks the latest version from GitHub, compares checksums, and prompts you to update in place.
+
+```text
+Options:
+  -c, --config <path>       path to config JSON file            (default: config.json)
+  -y, --skip-confirm        skip confirmation after connection tests
+  -n, --dry-run             test connections, do not deploy
+  --log-dir <path>          directory for per-server log files  (default: logs)
+  --assets-dir <path>       local assets directory to upload    (default: assets)
+  --scripts-dir <path>      local scripts directory             (default: scripts)
+  --remote-path <path>      remote working directory            (default: /tmp/s-orchestrator)
+  --exec <command>          run one command instead of the scripts dir
+  --servers <names>         comma-separated list of server names to target
+```
+
+| Feature                      | Full version | Lite version    |
+|------------------------------|--------------|-----------------|
+| Parallel deployment          | yes          | no - sequential |
+| TUI / plain mode             | yes          | plain only      |
+| Host key enforcement (TOFU)  | yes          | yes             |
+| Env injection                | yes          | yes             |
+| Dry-run mode                 | yes          | yes             |
+| Per-server log files         | yes          | yes             |
+| `keyFile` / `knownHostsFile` | yes          | yes             |
+| `--exec` / `--servers`       | yes          | yes             |
+| Self-update check            | no           | yes             |
+| JSON schema export           | yes          | no              |
+| Node.js required             | yes          | no              |
 
 ## Development
 
@@ -312,7 +328,7 @@ pnpm dev -- --help
 
 ### Project Structure
 
-```
+```text
 src/
 ├── index.ts          entry point, main()
 ├── cli.ts            CLI argument parsing (commander)
@@ -360,9 +376,11 @@ pnpm test tests/config.test.ts
 * Scripts run with **the permissions of the configured SSH user** - use a least-privilege deploy user where possible
 
 ## License
+
 This project is licensed under the **MIT License**.
 
 ### About
+
 MIT
 
 A short and simple permissive license with conditions only requiring preservation of copyright and license notices. Licensed works, modifications, and larger works may be distributed under different terms and without source code.
@@ -376,6 +394,6 @@ A short and simple permissive license with conditions only requiring preservatio
 | <details><summary>🟢 Modification</summary>The licensed material may be modified.</details>                                       |                                                                                                                                                              |                                                                                                                        |
 | <details><summary>🟢 Private use</summary>The licensed material may be used and modified in private.</details>                    |                                                                                                                                                              |                                                                                                                        |
 
-*Information provided by https://choosealicense.com/licenses/mit/*
+*Information provided by [https://choosealicense.com/licenses/mit/](https://choosealicense.com/licenses/mit/)*
 
 **This information is provided for general understanding and is not legal advice.**
